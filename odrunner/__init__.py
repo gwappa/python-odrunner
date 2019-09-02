@@ -25,6 +25,6 @@
 VERSION_STR = "1.0a1"
 
 from .core import Item, Block
-from .subject import Subject
-from .subject import Logger as SubjectLogger
-from .subject import View   as SubjectView
+from .entities import Subject, Session
+from .ui import TableView
+from .ui import openEntity as open

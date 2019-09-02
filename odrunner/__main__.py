@@ -25,17 +25,16 @@
 from qtpy import QtWidgets as _QtWidgets
 import sys as _sys
 
-from . import Item, Block, Subject, SubjectView
+from . import open, Item, Block, Subject, Session
 
 def run():
     app = _QtWidgets.QApplication(_sys.argv)
     subject = Subject(ID='MLA-11211', name="S001/20")
-    view = SubjectView(subject)
-    view.insert(Item(category="Comment", description="this is a comment."))
-    view.insert(Item(category="Comment", description="this is another comment."))
-    view.insert(Block(category="Session"))
-    view.resize(600, 400)
-    view.show()
+    session = Session(subject, name="190905-1")
+    subject.insert(Item(category="Comment", description="this is a comment."))
+    subject.insert(Item(category="Comment", description="this is another comment."))
+    subject.insert(session)
+    view = open(subject, as_window=True)
     _sys.exit(app.exec())
 
 if __name__ == '__main__':

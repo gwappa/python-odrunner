@@ -21,11 +21,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
+
 import datetime as _dt
 import uuid as _uuid
 
+DEBUG = True
+
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_DATE_FORMAT     = "%Y-%m-%d"
+
+def debug(msg, end='\n', flush=True):
+    if DEBUG == True:
+        import sys
+        print(msg, file=sys.stderr, end=end, flush=flush)
 
 def get_timestamp():
     return _dt.datetime.now()
@@ -84,27 +92,6 @@ class BaseObject:
             raise AttributeError(f"unknown field name: {name}")
         return self.as_str(name)
 
-class Entity(BaseObject):
-    _fields = ('modified',)
-
-    def __init__(self, modified=None, parent=None, uuid=None):
-        super().__init__(uuid=uuid)
-        self.modified = (get_timestamp() if modified is None else parse_time(modified))
-        self._parent  = parent
-
-    def mark_modified(self):
-        self.modified = get_timestamp()
-        if (self._parent is not None) and isinstance(self._parent, Entity):
-            self._parent.mark_modified()
-
-    def as_str(self, name):
-        value = getattr(self, '_'+name)
-        if name == 'modified':
-            return value.strftime(DEFAULT_DATETIME_FORMAT)
-        else:
-            return str(value)
-
-
 class Item(BaseObject):
     """
     the base model for log entry.
@@ -126,9 +113,9 @@ class Item(BaseObject):
         super().__init__(uuid=uuid)
         self._is_block   = is_block
         if is_block == False:
-            self.timestamp   = get_timestamp() if timestamp is None else parse_time(timestamp)
-            self.description = '' if description is None else description
-        self.category    = "Comment" if category is None else category
+            self._timestamp   = get_timestamp() if timestamp is None else parse_time(timestamp)
+            self._description = '' if description is None else description
+        self._category    = "Comment" if category is None else category
 
     def is_block(self):
         return self._is_block
@@ -147,22 +134,32 @@ class Item(BaseObject):
         super().set_field(name, value)
 
 class Block(Item):
-    _fields = Item._fields + ('start', 'end', 'children')
+    _fields = Item._fields + ('start', 'end',)
 
-    def __init__(self, category=None, start=None, end=None,
-                    parent=None, children=None, uuid=None):
+    def __init__(self, category=None, content=None, uuid=None):
         super().__init__(category=category, uuid=uuid, is_block=True)
-        self.start     = get_timestamp() if start is None else parse_time(start)
-        self.end       = None if end is None else parse_time(end)
-        self._parent   = parent
-        self._children = [] if children is None else list(children)
+        self._content = content
+
+    def __getattr__(self, name):
+        if name == 'content':
+            return self._content
+        else:
+            return super().__getattr__(name)
 
     def get_description(self):
-        return ""
+        return "" if self._content is None else self._content.as_title()
+
+    def get_start(self):
+        return None if self._content is None else self._content.get_start()
+
+    def get_end(self):
+        return None if self._content is None else self._content.get_end()
 
     def get_field(self, name):
-        if name == 'timestamp':
-            return self.get_field('start')
+        if name in ('timestamp', 'start'):
+            return self.get_start()
+        elif name == 'end':
+            return self.get_end()
         elif name == 'description':
             return self.get_description()
         else:
@@ -171,21 +168,117 @@ class Block(Item):
     def set_field(self, name, value):
         if name == 'timestamp':
             self.set_field('start', value)
-        elif name in ('start', 'stop'):
-            if not isinstance(value, _dt.datetime):
-                value = parse_time(value)
-            super().set_field(name, value)
-        elif name == 'description':
+        elif name in ('start', 'stop', 'description'):
             pass
         else:
             super().set_field(name, value)
 
     def as_str(self, name):
         if name == 'timestamp':
-            return format_time(self.start)
+            if self.start is not None:
+                return format_time(self.start)
+            else:
+                return ''
         elif name in ('start', 'stop'):
             return format_time(getattr(self, name))
         elif name == 'description':
             return self.get_description()
         else:
             return str(getattr(self, '_'+name))
+
+class Entity(BaseObject):
+    _fields     = ('start', 'end', 'modified',)
+    _block      = 'Entity'
+    _stamp      = 'datetime'
+    _entrycls   = Item
+    _parentname = None
+
+    @classmethod
+    def parse_start(cls, start):
+        if cls._stamp == 'datetime':
+            return get_timestamp() if start is None else parse_time(start)
+        elif cls._stamp == 'date':
+            return None if start is None else parse_date(start)
+        else:
+            raise ValueError(f"unknown timestamping strategy: {cls._stamp}")
+
+    @classmethod
+    def parse_end(cls, end):
+        if cls._stamp == 'datetime':
+            return None if end is None else parse_time(end)
+        elif cls._stamp == 'date':
+            return None if end is None else parse_date(end)
+        else:
+            raise ValueError(f"unknown timestamping strategy: {cls._stamp}")
+
+    def __init__(self, start=None, end=None,
+                    modified=None, parent=None, uuid=None):
+        super().__init__(uuid=uuid)
+        self._start    = self.__class__.parse_start(start)
+        self._end      = self.__class__.parse_end(end)
+        self._modified = (get_timestamp() if modified is None else parse_time(modified))
+        self._parent   = parent
+        self._children = []
+        self._logs     = []
+
+    def __getattr__(self, name):
+        if name == 'logs':
+            return self._logs
+        elif name == 'title':
+            return self.get_title()
+        elif name == 'children':
+            return self._children
+        elif name == self._parentname:
+            return self._parent
+        else:
+            return super().__getattr__(name)
+
+    def __len__(self):
+        return len(self._logs)
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and (self.uuid == other.uuid)
+
+    def as_entry(self):
+        return Block(category=self._block, content=self)
+
+    def get_start(self):
+        return self.start
+
+    def get_end(self):
+        return self.end
+
+    def get_entry(self, index):
+        return self._logs[index]
+
+    def get_title(self):
+        return "(untitled)"
+
+    def insert(self, entry, index=-1):
+        if index < 0:
+            index = len(self._logs)
+        if isinstance(entry, Entity):
+            self.insert(entry.as_entry(), index=index)
+            if entry not in self._children:
+                self._children.append(entry)
+        elif not isinstance(entry, self._entrycls):
+            raise ValueError(f"expected {self._entrycls.__name__}, got {entry.__class__.__name__}")
+        else:
+            self._logs.insert(index, entry)
+
+    def update(self):
+        self.modified = get_timestamp()
+        if isinstance(self._parent, Entity):
+            self._parent.update()
+
+    def as_str(self, name):
+        value = getattr(self, '_'+name)
+        if name == 'modified':
+            return value.strftime(DEFAULT_DATETIME_FORMAT)
+        else:
+            return str(value)
+
+    def as_title(self, parents=False):
+        if (parents == True) and isinstance(self._parent, Entity):
+            return self._parent.as_title(parents=True) + " :: " + self.title
+        return self.title

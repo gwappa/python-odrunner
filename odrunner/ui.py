@@ -21,74 +21,45 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-
 from qtpy import QtCore as _QtCore
 from qtpy.QtCore import Qt as _Qt
 from qtpy import QtWidgets as _QtWidgets
 
-from . import core as _core
+from .core import debug as _debug
 
-class Subject(_core.Entity):
-    _fields   = ('ID', 'name', 'species', 'strain', 'DOB', 'sex') + _core.Entity._fields
-    _entrycls = _core.Item
-
-    def __init__(self, ID=None, name=None,
-                    species=None, strain=None, DOB=None, sex=None,
-                    modified=None, uuid=None):
-        super().__init__(modified=modified, uuid=uuid)
-        self.ID      = '' if ID is None else ID
-        self.name    = '' if name is None else name
-        self.species = '' if species is None else species
-        self.strain  = '' if strain is None else strain
-        self.DOB     = None if DOB is None else _core.parse_date(DOB)
-        self.sex     = 'ND' if sex is None else sex
-        self._logs   = []
-
-    def __getattr__(self, name):
-        if name == 'logs':
-            return self._logs
-        else:
-            return super().__getattr__(name)
-
-    def __len__(self):
-        return len(self._logs)
-
-    def insert(self, entry, index=-1):
-        if not isinstance(entry, self._entrycls):
-            raise ValueError(f"expected {self._entrycls.__name__}, got {entry.__class__.__name__}")
-        self._logs.insert(index, entry)
-
-    def get_entry(self, index):
-        return self._logs[index]
-
-    def as_title(self):
-        if len(self.ID) == 0:
-            return "(no name)"
-        elif len(self.name) == 0:
-            return self.ID
-        else:
-            return f"{self.ID} ({self.name})"
-
-class View(_QtWidgets.QTableView):
-    def __init__(self, subject, logger=None, parent=None):
+class TableView(_QtWidgets.QTableView):
+    def __init__(self, data, logger=None, parent=None):
         super().__init__(parent=parent)
-        self.subject = subject
-        self._logger = Logger(subject) if logger is None else logger
+        self.data    = data
+        self._logger = LogDataModel(data) if logger is None else logger
         self.setModel(self._logger)
+        self._logger.checkedError.connect(self.showErrorDialog)
         self.setSelectionBehavior(_QtWidgets.QAbstractItemView.SelectRows)
         self.horizontalHeader().setStretchLastSection(True)
-        self.setWindowTitle(self.subject.as_title())
+        self.doubleClicked.connect(self.openEntry)
 
     def insert(self, entry, index=-1):
         self._logger.insert(entry, index)
 
-class Logger(_QtCore.QAbstractTableModel):
-    """the table model for logging of procedures to subjects."""
+    def openEntry(self, index):
+        entry = self._logger.getEntryAt(index)
+        if (entry is not None) and entry.is_block():
+            _debug(f"opening: {entry}")
+            openEntity(entry.content, as_window=True)
+        # TODO: ignore all the primitive entries?
 
-    def __init__(self, subject, parent=None):
+    def showErrorDialog(self, title, msg):
+        _QtWidgets.QMessageBox.warning(self, title, msg)
+
+
+class LogDataModel(_QtCore.QAbstractTableModel):
+    """the table model for logging of procedures to subjects."""
+    checkedError = _QtCore.Signal(str, str)
+
+    def __init__(self, data, parent=None):
         super().__init__(parent=parent)
-        self._entrycls = subject._entrycls
-        self._data     = subject
+        self._entrycls = data._entrycls
+        self._data     = data
         self._root     = _QtCore.QModelIndex()
 
     def headerData(self, section, orientation, role):
@@ -139,8 +110,14 @@ class Logger(_QtCore.QAbstractTableModel):
             entry.set_field(self._entrycls._fields[index.column()], value)
             return True
         except ValueError as e:
-            print(f"***{e}")
+            self.checkedError.emit("Input error", str(e))
             return False
+
+    def getEntryAt(self, index):
+        if index.isValid():
+            return self._data.get_entry(index.row())
+        else:
+            return None
 
     def insert(self, entry, index=-1):
         if not isinstance(entry, self._entrycls):
@@ -151,3 +128,14 @@ class Logger(_QtCore.QAbstractTableModel):
         self.beginInsertRows(self._root, index, index)
         self._data.insert(entry, index=index)
         self.endInsertRows()
+
+_views = []
+
+def openEntity(entity, parent=None, as_window=True):
+    view = TableView(entity, parent=parent)
+    view.setWindowTitle(entity.as_title(parents=True))
+    if as_window == True:
+        view.resize(600, 400)
+        view.show()
+        _views.append(view)
+    return view
