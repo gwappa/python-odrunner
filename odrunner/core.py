@@ -127,7 +127,7 @@ class Item(BaseObject):
         self._is_block   = is_block
         if is_block == False:
             self.timestamp   = get_timestamp() if timestamp is None else parse_time(timestamp)
-            self.description = '' if description is not None else description
+            self.description = '' if description is None else description
         self.category    = "Comment" if category is None else category
 
     def is_block(self):
@@ -139,6 +139,12 @@ class Item(BaseObject):
             return format_time(value)
         else:
             return str(value)
+
+    def set_field(self, name, value):
+        if name == 'timestamp':
+            if not isinstance(value, _dt.datetime):
+                value = parse_time(value)
+        super().set_field(name, value)
 
 class Block(Item):
     _fields = Item._fields + ('start', 'end', 'children')
@@ -152,7 +158,7 @@ class Block(Item):
         self._children = [] if children is None else list(children)
 
     def get_description(self):
-        return "(description not available)"
+        return ""
 
     def get_field(self, name):
         if name == 'timestamp':
@@ -165,6 +171,10 @@ class Block(Item):
     def set_field(self, name, value):
         if name == 'timestamp':
             self.set_field('start', value)
+        elif name in ('start', 'stop'):
+            if not isinstance(value, _dt.datetime):
+                value = parse_time(value)
+            super().set_field(name, value)
         elif name == 'description':
             pass
         else:

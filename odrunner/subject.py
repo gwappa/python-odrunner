@@ -58,7 +58,7 @@ class Subject(_core.Entity):
             raise ValueError(f"expected {self._entrycls.__name__}, got {entry.__class__.__name__}")
         self._logs.insert(index, entry)
 
-    def get_log(self, index):
+    def get_entry(self, index):
         return self._logs[index]
 
     def as_title(self):
@@ -75,6 +75,7 @@ class View(_QtWidgets.QTableView):
         self.subject = subject
         self._logger = Logger(subject) if logger is None else logger
         self.setModel(self._logger)
+        self.setSelectionBehavior(_QtWidgets.QAbstractItemView.SelectRows)
         self.horizontalHeader().setStretchLastSection(True)
         self.setWindowTitle(self.subject.as_title())
 
@@ -87,21 +88,24 @@ class Logger(_QtCore.QAbstractTableModel):
     def __init__(self, subject, parent=None):
         super().__init__(parent=parent)
         self._entrycls = subject._entrycls
-        self._subject  = subject
+        self._data     = subject
         self._root     = _QtCore.QModelIndex()
 
     def headerData(self, section, orientation, role):
         """overrides QAbstractTableModel::headerData."""
         if (orientation == _Qt.Horizontal) and (role == _Qt.DisplayRole):
-            return self._entrycls._fields[section]
+            return self.columnName(section)
         else:
             return None
+
+    def columnName(self, index):
+        return self._entrycls._fields[index]
 
     def rowCount(self, parent):
         """overrides QAbstractTableModel::rowCount."""
         if not parent.isValid():
             # root
-            return len(self._subject)
+            return len(self._data)
         else:
             return 0
 
@@ -113,18 +117,37 @@ class Logger(_QtCore.QAbstractTableModel):
         else:
             return 0
 
+    def flags(self, index):
+        base = super().flags(index)
+        if (index.isValid()) and (not self._data.get_entry(index.row()).is_block()):
+            if self.columnName(index.column()) != 'category':
+                return base | _Qt.ItemIsEditable
+        return base
+
     def data(self, index, role):
-        if (index.isValid()) and (role == _Qt.DisplayRole):
-            return self._subject.get_log(index.row()).for_display(index.column())
+        if index.isValid():
+            if role in (_Qt.DisplayRole, _Qt.EditRole):
+                return self._data.get_entry(index.row()).for_display(index.column())
+            else:
+                return None
         else:
             return None
+
+    def setData(self, index, value, role):
+        entry = self._data.get_entry(index.row())
+        try:
+            entry.set_field(self._entrycls._fields[index.column()], value)
+            return True
+        except ValueError as e:
+            print(f"***{e}")
+            return False
 
     def insert(self, entry, index=-1):
         if not isinstance(entry, self._entrycls):
             raise ValueError(f"expected {self._entrycls.__name__}, got {entry.__class__.__name__}")
         index = int(index)
         if index < 0:
-            index = len(self._subject) + 1 + index
+            index = len(self._data) + 1 + index
         self.beginInsertRows(self._root, index, index)
-        self._subject.insert(entry, index=index)
+        self._data.insert(entry, index=index)
         self.endInsertRows()
