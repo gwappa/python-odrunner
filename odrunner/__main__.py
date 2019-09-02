@@ -25,12 +25,13 @@
 from qtpy import QtWidgets as _QtWidgets
 import sys as _sys
 
-from . import SubjectView, SubjectEntry
+from . import Block, Subject, SubjectView
 
 def run():
     app = _QtWidgets.QApplication(_sys.argv)
-    sub = SubjectView("S001/19")
-    sub.insert(SubjectEntry(category="Session", description="190722-1"))
+    subject = Subject(ID='MLA-11211', name="S001/20")
+    sub = SubjectView(subject)
+    sub.insert(Block(category="Session"))
     sub.resize(600, 400)
     sub.show()
     _sys.exit(app.exec())
