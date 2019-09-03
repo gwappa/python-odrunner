@@ -147,9 +147,36 @@ class Browser(_QtWidgets.QMainWindow):
         super().__init__(parent=parent)
         self.__populateActions()
         self.resize(800, 600)
+        self.view_stack = []
+
+    def _openSubject(self, checked=None):
+        _debug("open...")
+
+    def _newSubject(self, checked=None):
+        _debug("new...")
+
+    def _saveSubject(self, checked=None):
+        _debug("save...")
+
+    def _dummy(self, checked=None):
+        _debug("dummy...")
+
+    def __newAction(self, widget, item):
+        action = item['name']
+        self.actions[action] = widget.addAction(_get_icon(item['icon']), item['text'])
+        self.actions[action].setToolTip(item['tip'])
+        self.actions[action].setEnabled(item['init'])
+        self.actions[action].triggered.connect(getattr(self, item['slot']))
+        if 'key' in item.keys():
+            # set shortcut
+            self.actions[action].setShortcut(_QtGui.QKeySequence(item['key']))
 
     def __populateActions(self):
         """setting up application actions"""
+        bar = _QtWidgets.QMenuBar(self)
+        self.setMenuBar(bar)
+        self.menus = {}
+        self.menus['__root__'] = bar
         self.actions  = {}
         for info in _commands:
             if info['type'] == 'toolbar':
@@ -161,13 +188,27 @@ class Browser(_QtWidgets.QMainWindow):
                     if action == '__sep__':
                         widget.addSeparator()
                         continue
-                    self.actions[action] = widget.addAction(_get_icon(item['icon']), item['text'])
-                    self.actions[action].setToolTip(item['tip'])
-                    self.actions[action].setEnabled(item['init'])
+                    else:
+                        self.__newAction(widget, item)
                 self.addToolBar(info['position'], widget)
+                setattr(self, info['name'], widget)
+            elif info['type'] == 'menu':
+                name = info['name']
+                self.menus[name] = bar.addMenu(info['text'])
+                for item in info['actions']:
+                    action = item['name']
+                    if action == '__sep__':
+                        self.menus[name].addSeparator()
+                        continue
+                    if action in self.actions.keys():
+                        self.menus[name].addAction(self.actions[action])
+                    else:
+                        self.__newAction(self.menus[name], item)
+                    if 'key' in item.keys():
+                        # set shortcut
+                        self.actions[action].setShortcut(_QtGui.QKeySequence(item['key']))
             else:
                 continue
-            setattr(self, info['name'], widget)
 
 _commands = [
     {
@@ -180,6 +221,7 @@ _commands = [
                 'icon': 'backward.png',
                 'text': 'Go back',
                 'tip':  'Back to the parent view',
+                'slot': '_dummy',
                 'init': False
             },
             {
@@ -187,6 +229,7 @@ _commands = [
                 'icon': 'forward.png',
                 'text': 'Go forward',
                 'tip':  'Go to the child view that has been shown previously',
+                'slot': '_dummy',
                 'init': False
             },
             {
@@ -197,6 +240,7 @@ _commands = [
                 'icon': 'edit.png',
                 'text': 'Edit...',
                 'tip':  'Edit the selected entry',
+                'slot': '_dummy',
                 'init': False
             },
             {
@@ -204,6 +248,7 @@ _commands = [
                 'icon': 'plus.png',
                 'text': 'Add...',
                 'tip':  'Add a new entry to the current block',
+                'slot': '_dummy',
                 'init': False
             },
             {
@@ -211,6 +256,7 @@ _commands = [
                 'icon': 'minus.png',
                 'text': 'Remove',
                 'tip':  'Remove the selected entry',
+                'slot': '_dummy',
                 'init': False
             }
         ]
@@ -225,6 +271,7 @@ _commands = [
                 'icon': 'new.png',
                 'text': 'New...',
                 'tip':  'Create and open a new subject log',
+                'slot': '_newSubject',
                 'init': True
             },
             {
@@ -232,6 +279,7 @@ _commands = [
                 'icon': 'open.png',
                 'text': 'Open...',
                 'tip':  'Open another subject log',
+                'slot': '_openSubject',
                 'init': True
             },
             {
@@ -239,6 +287,15 @@ _commands = [
                 'icon': 'save.png',
                 'text': 'Save',
                 'tip':  'Save the current subject log',
+                'slot': '_saveSubject',
+                'init': False
+            },
+            {
+                'name': 'close',
+                'icon': 'exit.png',
+                'text': 'Close',
+                'tip':  'Close the current subject log',
+                'slot': '_dummy',
                 'init': False
             },
             {
@@ -249,8 +306,79 @@ _commands = [
                 'icon': 'info.png',
                 'text': 'Info...',
                 'tip':  'Show information about this subject',
+                'slot': '_dummy',
                 'init': False
             }
         ]
     },
+    {
+        'name': 'file',
+        'type': 'menu',
+        'text': 'File',
+        'actions': [
+            {
+                'name': 'new',
+                'key':  'Ctrl+N'
+            },
+            {
+                'name': 'open',
+                'key':  'Ctrl+O'
+            },
+            {
+                'name': 'close',
+                'key':  'Ctrl+W'
+            },
+            {
+                'name': '__sep__'
+            },
+            {
+                'name': 'save',
+                'key':  'Ctrl+S'
+            },
+            {
+                'name': '__sep__'
+            },
+            {
+                'name': 'info',
+                'key':  'Ctrl+I'
+            }
+        ]
+    },
+    {
+        'name': 'entry',
+        'type': 'menu',
+        'text': 'Entry',
+        'actions': [
+            {
+                'name': 'add',
+                'key':  'Ctrl+Shift+N'
+            },
+            {
+                'name': 'remove',
+                'key':  _Qt.CTRL + _Qt.Key_Delete
+            },
+            {
+                'name': '__sep__'
+            },
+            {
+                'name': 'edit',
+                'key':  _Qt.CTRL + _Qt.Key_Return
+            }
+        ]
+    },
+    {
+        'name': 'navigate',
+        'type': 'menu',
+        'text': 'Navigate',
+        'actions': [
+            {
+                'name': 'prev',
+                'key':  'Ctrl+['
+            },
+            {
+                'name': 'next',
+                'key':  'Ctrl+]'
+            }
+        ]
+    }
 ]
