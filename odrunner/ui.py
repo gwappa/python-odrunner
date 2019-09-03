@@ -24,8 +24,10 @@
 from qtpy import QtCore as _QtCore
 from qtpy.QtCore import Qt as _Qt
 from qtpy import QtWidgets as _QtWidgets
+from qtpy import QtGui as _QtGui
 
 from .core import debug as _debug
+from .resources import as_icon as _get_icon
 
 class TableView(_QtWidgets.QTableView):
     def __init__(self, data, logger=None, parent=None):
@@ -139,3 +141,116 @@ def openEntity(entity, parent=None, as_window=True):
         view.show()
         _views.append(view)
     return view
+
+class Browser(_QtWidgets.QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.__populateActions()
+        self.resize(800, 600)
+
+    def __populateActions(self):
+        """setting up application actions"""
+        self.actions  = {}
+        for info in _commands:
+            if info['type'] == 'toolbar':
+                widget = _QtWidgets.QToolBar(self)
+                widget.setMovable(False)
+                widget.setToolButtonStyle(_Qt.ToolButtonTextUnderIcon)
+                for item in info['actions']:
+                    action = item['name']
+                    if action == '__sep__':
+                        widget.addSeparator()
+                        continue
+                    self.actions[action] = widget.addAction(_get_icon(item['icon']), item['text'])
+                    self.actions[action].setToolTip(item['tip'])
+                    self.actions[action].setEnabled(item['init'])
+                self.addToolBar(info['position'], widget)
+            else:
+                continue
+            setattr(self, info['name'], widget)
+
+_commands = [
+    {
+        'name': 'browse',
+        'type': 'toolbar',
+        'position': _Qt.TopToolBarArea,
+        'actions': [
+            {
+                'name': 'prev',
+                'icon': 'backward.png',
+                'text': 'Go back',
+                'tip':  'Back to the parent view',
+                'init': False
+            },
+            {
+                'name': 'next',
+                'icon': 'forward.png',
+                'text': 'Go forward',
+                'tip':  'Go to the child view that has been shown previously',
+                'init': False
+            },
+            {
+                'name': '__sep__'
+            },
+            {
+                'name': 'edit',
+                'icon': 'edit.png',
+                'text': 'Edit...',
+                'tip':  'Edit the selected entry',
+                'init': False
+            },
+            {
+                'name': 'add',
+                'icon': 'plus.png',
+                'text': 'Add...',
+                'tip':  'Add a new entry to the current block',
+                'init': False
+            },
+            {
+                'name': 'remove',
+                'icon': 'minus.png',
+                'text': 'Remove',
+                'tip':  'Remove the selected entry',
+                'init': False
+            }
+        ]
+    },
+    {
+        'name': 'operate',
+        'type': 'toolbar',
+        'position': _Qt.RightToolBarArea,
+        'actions': [
+            {
+                'name': 'new',
+                'icon': 'new.png',
+                'text': 'New...',
+                'tip':  'Create and open a new subject log',
+                'init': True
+            },
+            {
+                'name': 'open',
+                'icon': 'open.png',
+                'text': 'Open...',
+                'tip':  'Open another subject log',
+                'init': True
+            },
+            {
+                'name': 'save',
+                'icon': 'save.png',
+                'text': 'Save',
+                'tip':  'Save the current subject log',
+                'init': False
+            },
+            {
+                'name': '__sep__'
+            },
+            {
+                'name': 'info',
+                'icon': 'info.png',
+                'text': 'Info...',
+                'tip':  'Show information about this subject',
+                'init': False
+            }
+        ]
+    },
+]

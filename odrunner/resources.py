@@ -22,9 +22,21 @@
 # SOFTWARE.
 #
 
-VERSION_STR = "1.0a1"
+from pathlib import Path as _Path
+from warnings import warn as _warn
+from qtpy import QtGui as _QtGui
 
-from .core import Item, Block
-from .entities import Subject, Session
-from .ui import TableView, Browser
-from .ui import openEntity as open
+__root = _Path(__file__).parent / "_rsrc"
+
+if not __root.exists():
+    _warn("the odrunner resource file not found. icons may not be properly rendered.")
+
+def resolve(relative_path):
+    """returns a string path to the resource file,
+    given a path relative to the _rsrc directory"""
+    relative_path = _Path(relative_path)
+    return str(__root / relative_path)
+
+def as_icon(relative_path):
+    """returns the data at the path as a QIcon."""
+    return _QtGui.QIcon(resolve(relative_path))
